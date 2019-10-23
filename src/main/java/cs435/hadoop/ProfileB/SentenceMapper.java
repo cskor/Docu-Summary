@@ -25,61 +25,35 @@ public class SentenceMapper extends Mapper<LongWritable, Text, Text, NullWritabl
   BufferedInputStream bis = null;
 
   @Override
-  public void setup(Context context)
-  {
+  public void setup(Context context) {
     //Read the distributed cache
     try {
       localFiles = DistributedCache.getLocalCacheFiles(context.getConfiguration());
-      //context.write(new Text(localFiles.length + ""), NullWritable.get());
 
       File directory = new File(localFiles[0].toString());
       File[] files = directory.listFiles();
-      for(File file: files){
-        if (!file.toString().contains(".crc") && !file.toString().contains("SUCCESS")){
+
+      for (File file : files) {
+        if (!file.toString().contains(".crc") && !file.toString().contains("SUCCESS")) {
           try {
             fis = new FileInputStream(file);
             bis = new BufferedInputStream(fis);
 
             BufferedReader d = new BufferedReader(new InputStreamReader(bis));
-            context.write(new Text(d.readLine()), NullWritable.get());
-          } catch (IOException e) { e.printStackTrace();}
-        }
-        //context.write(new Text(file.toString()), NullWritable.get());
-       /* try {
-          fis = new FileInputStream(file);
-          bis = new BufferedInputStream(fis);
+            String line = null;
+            while ((line = d.readLine()) != null) {
+              String[] input = line.split("\\s+");
+              String[] unigramInfo = input[1].split(";");
 
-          BufferedReader d = new BufferedReader(new InputStreamReader(bis));
-          context.write(new Text(d.readLine()), NullWritable.get());
-        } catch (IOException e) { e.printStackTrace();}*/
+              unigramValues.put("" + input[0] + ";" + unigramInfo[0], Double.parseDouble(unigramInfo[1]));
+            }
+          } catch (IOException e) { e.printStackTrace(); }
+        }
       }
-        /*context.write(new Text(f.toString()), NullWritable.get());
-      //context.write(new Text(localFiles[0].toString()), NullWritable.get());
-
-      try {
-        fis = new FileInputStream(file);
-        bis = new BufferedInputStream(fis);
-
-        BufferedReader d = new BufferedReader(new InputStreamReader(bis));
-        context.write(new Text(d.readLine()), NullWritable.get());
-      } catch (IOException e) { e.printStackTrace();}
-/*
-      for(Path p: files) {
-        context.write(new Text("I HAVE A FILE"), NullWritable.get());
-        BufferedReader rdr = new BufferedReader(new InputStreamReader(new BufferedInputStream(new FileInputStream(p.toString()))));
-        String line = null;
-
-        while( (line = rdr.readLine()) != null){
-          String[] input = line.split("\\s+");
-          String[] unigramInfo = input[1].split(";");
-
-          unigramValues.put("" + input[0] + ";" + unigramInfo[0], Double.parseDouble(unigramInfo[1]));
-        }
-      } */
-    } catch (IOException | InterruptedException e) { e.printStackTrace(); }
+    } catch (IOException e) { e.printStackTrace(); }
   }
 
-  protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+    protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
     for(String id: unigramValues.keySet()){
       context.write(new Text(id), NullWritable.get());
     }
