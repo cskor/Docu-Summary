@@ -19,6 +19,8 @@ public class SentenceReducer extends Reducer<Text, Text, Text, Text> {
       throws IOException, InterruptedException {
 
     unigramValues.clear();
+    bestSentenceScores.clear();
+
     String article = "";
 
     for(Text value: values){
@@ -31,7 +33,7 @@ public class SentenceReducer extends Reducer<Text, Text, Text, Text> {
       }
     }
 
-    String[] sentences = article.split(". ");
+    String[] sentences = article.split("\\. ");
     double total;
 
     for(int i = 0; i < sentences.length; i++){
