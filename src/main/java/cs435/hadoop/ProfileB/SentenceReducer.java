@@ -3,77 +3,103 @@ package cs435.hadoop.ProfileB;
 import java.io.IOException;
 import java.util.*;
 import org.apache.hadoop.io.Text;
-import static java.util.stream.Collectors.*;
 
 import org.apache.hadoop.mapreduce.Reducer;
 
-public class SentenceReducer extends Reducer<Text, Text, Text, Text> {
-  private Map<String, Double> unigramValues = new HashMap<>();
-  private TreeMap<String, Double> bestUnigramScores = new TreeMap<>();
-  private TreeMap<String, Double> sortedUnigram = new TreeMap<>();
+class UnigramCompare implements Comparator<String>{
+  @Override
+  public int compare(String first, String second) {
+    //Input word;tf-idf value
+    String[] firstParts = first.split(";");
+    String[] secondParts = second.split(";");
+    return -1 * Double.compare(Double.parseDouble(firstParts[1]), Double.parseDouble(secondParts[1]));
+  }
+}
 
-  private TreeMap<Integer, Double> bestSentenceScores = new TreeMap<>();
-  private TreeMap<Integer, Double> sortedSentences = new TreeMap<>();
+class SentenceCompare implements Comparator<String>{
+  @Override
+  public int compare(String first, String second) {
+    //Input word;tf-idf value
+    String[] firstParts = first.split(";");
+    String[] secondParts = second.split(";");
+    return Double.compare(Double.parseDouble(firstParts[0]), Double.parseDouble(secondParts[0]));
+  }
+}
+
+public class SentenceReducer extends Reducer<Text, Text, Text, Text> {
+
+  private Map<String, String> unigramValues = new HashMap<>();
+  private ArrayList<String> bestUnigramScores = new ArrayList<>();
+  private ArrayList<String> bestSentenceScores = new ArrayList<>();
+  private ArrayList<String> top3Sentences = new ArrayList<>();
 
   protected void reduce(Text key, Iterable<Text> values, Context context)
       throws IOException, InterruptedException {
+      unigramValues.clear();
+      bestSentenceScores.clear();
+      top3Sentences.clear();
 
-    unigramValues.clear();
-    bestSentenceScores.clear();
+      String article = "";
 
-    String article = "";
-
-    for(Text value: values){
-      if(value.charAt(0) == 'S')
-        article = value.toString().substring(1);
-      else{
-        String input = value.toString().substring(1);
-        String[] unigramInfo = input.split(";");
-        unigramValues.put( unigramInfo[0], Double.parseDouble(unigramInfo[1]));
+      for (Text value : values) {
+        if (value.charAt(0) == 'S')
+          article = value.toString().substring(1);
+        else {
+          String input = value.toString().substring(1);
+          String[] unigramInfo = input.split(";");
+          unigramValues.put(unigramInfo[0], input);
+        }
       }
-    }
 
-    String[] sentences = article.split("\\. ");
-    double total;
+      String[] sentences = article.split("\\. ");
+      double total;
+      int count;
+      for (int i = 0; i < sentences.length; i++) {
+        bestUnigramScores.clear();
 
-    for(int i = 0; i < sentences.length; i++){
-      bestUnigramScores.clear();
-
-      for(String word: sentences[i].split("\\s+")){
-        word = word.toLowerCase().replaceAll("[^A-Za-z0-9]", "");
-        if(word.length() > 0 && !bestUnigramScores.containsKey(word)){
-            bestUnigramScores.put(word, unigramValues.get(word));
-
-            if(bestUnigramScores.size() > 5) {
-              //Sort the tree map by value
-              sortedUnigram = bestUnigramScores.entrySet()
-                  .stream()
-                  .sorted(Collections.reverseOrder(Map.Entry.comparingByValue()))
-                  .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, TreeMap::new));
-              bestUnigramScores.remove(sortedUnigram.lastKey());
-            }
+        for (String word : sentences[i].split("\\s+")) {
+          word = word.toLowerCase().replaceAll("[^A-Za-z0-9]", "");
+          if (word.length() > 0 && !bestUnigramScores.contains(unigramValues.get(word))){
+            bestUnigramScores.add(unigramValues.get(word));
           }
         }
 
-      //Sum up the sentence tf idf score
-      total = 0;
-      for(String unigram: bestUnigramScores.keySet()) {
-        total += bestUnigramScores.get(unigram);
-      }
-      bestSentenceScores.put(i, total);
+        //Sum up the sentence tf idf score
+        total = 0;
+        count = 0;
+        bestUnigramScores.remove(null);
+        bestUnigramScores.sort(new UnigramCompare());
+        for (String bestUnigramScore : bestUnigramScores) {
+          if (count == 5)
+            break;
+          total += Double.parseDouble(bestUnigramScore.split(";")[1]);
+          count++;
+        }
 
-      if(bestSentenceScores.size() > 3) {
-        //Sort the tree map by value
-        sortedSentences = bestSentenceScores.entrySet()
-            .stream()
-            .sorted(Collections.reverseOrder(Map.Entry.comparingByValue()))
-            .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, TreeMap::new));
-        bestSentenceScores.remove(sortedSentences.lastKey());
+      bestSentenceScores.add("" + i + ";" + total);
       }
-    }
 
-    for(Integer index: bestSentenceScores.keySet()){
-      context.write(key, new Text( sentences[index]));
-    }
+      bestSentenceScores.remove(null);
+      bestSentenceScores.sort(new UnigramCompare());
+      count = 0;
+      //Keep only the top three
+      for (String bestSentence : bestSentenceScores) {
+        if( count == 3 )
+          break;
+        top3Sentences.add(bestSentence);
+        count ++;
+      }
+
+      top3Sentences.remove(null);
+      top3Sentences.sort( new SentenceCompare());
+      StringBuilder finalSentence = new StringBuilder();
+
+      for(String sent: top3Sentences){
+        int index = Integer.parseInt(sent.split(";")[0]);
+        finalSentence.append(sentences[index]);
+        finalSentence.append(". ");
+      }
+
+      context.write(key, new Text(finalSentence.toString()));
   }
 }
